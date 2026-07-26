@@ -6,6 +6,8 @@ what the publisher cannot see.
 
 Catalog task: `MEDIA-015`. Part of [thousand](../../README.md).
 
+**[Read this on the web](https://jesserweigel.github.io/honest-newsletter-stats/)**
+
 **Read [THREAT_MODEL.md](THREAT_MODEL.md) first.** It is the primary deliverable. The code
 implements the position taken there, and where the code falls short, that document says so
 in detail. The short version of the honest part: the redirect endpoint still receives every
