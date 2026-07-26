@@ -1,0 +1,157 @@
+<title>honest-newsletter-stats</title>
+<style>
+:root{color-scheme:light;--bg:#FAF9FC;--bg2:#F2F0F7;--ink:#1B1826;--ink2:#4A4459;
+--ink3:#6C6580;--rule:#DDD8E8;--accent:#4A3AA7;--code:#F2F0F7;
+--mono:ui-monospace,"SF Mono","Cascadia Mono","Roboto Mono",Menlo,Consolas,monospace;
+--sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+@media(prefers-color-scheme:dark){:root:where(:not([data-theme=light])){color-scheme:dark;
+--bg:#17151C;--bg2:#1F1C27;--ink:#EDE9F5;--ink2:#B9B2C9;--ink3:#948CA6;--rule:#322D3E;
+--accent:#9085E9;--code:#1F1C27}}
+:root[data-theme=dark]{color-scheme:dark;--bg:#17151C;--bg2:#1F1C27;--ink:#EDE9F5;
+--ink2:#B9B2C9;--ink3:#948CA6;--rule:#322D3E;--accent:#9085E9;--code:#1F1C27}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased}
+.wrap{max-width:760px;margin:0 auto;padding:0 22px 90px}
+header{padding:64px 0 28px;border-bottom:2px solid var(--ink)}
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+color:var(--ink3);margin:0 0 14px}
+h1{font-family:var(--mono);font-weight:600;font-size:clamp(30px,5.5vw,50px);line-height:1.05;
+letter-spacing:-.03em;margin:0 0 14px;text-wrap:balance}
+.tag{font-size:19px;color:var(--ink2);margin:0;max-width:58ch}
+.cta{display:flex;flex-wrap:wrap;gap:10px;margin-top:26px}
+.btn{font-family:var(--mono);font-size:13px;text-decoration:none;padding:9px 16px;
+border:1px solid var(--rule);border-radius:3px;color:var(--ink);background:var(--bg2)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--bg)}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn.primary:hover{color:var(--bg);opacity:.9}
+h2{font-family:var(--mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase;
+color:var(--ink3);font-weight:600;margin:44px 0 14px;padding-bottom:8px;
+border-bottom:1px solid var(--rule)}
+h3{font-size:17px;margin:26px 0 8px}
+p,li{color:var(--ink2)}p{max-width:66ch}
+strong{color:var(--ink)}
+a{color:var(--accent)}
+pre{background:var(--code);border:1px solid var(--rule);border-radius:4px;padding:14px 16px;
+overflow-x:auto;font-family:var(--mono);font-size:13px;line-height:1.55;color:var(--ink)}
+code{font-family:var(--mono);font-size:.9em;background:var(--code);padding:1px 5px;
+border-radius:3px}
+pre code{background:none;padding:0}
+table{border-collapse:collapse;width:100%;font-size:14.5px;margin:14px 0;display:block;
+overflow-x:auto}
+th,td{text-align:left;padding:8px 14px 8px 0;border-bottom:1px solid var(--rule);
+vertical-align:top}
+th{font-family:var(--mono);font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;
+color:var(--ink3);font-weight:600;white-space:nowrap}
+blockquote{margin:18px 0;padding:12px 18px;border-left:3px solid var(--accent);
+background:var(--bg2);border-radius:0 4px 4px 0}
+blockquote p{margin:0}
+footer{margin-top:56px;padding-top:20px;border-top:1px solid var(--rule);
+font-size:14px;color:var(--ink3)}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+<div class="wrap">
+<header>
+  <p class="eyebrow">JesseRWeigel &middot; open source</p>
+  <h1>honest-newsletter-stats</h1>
+  <p class="tag">Newsletter analytics that tell you what they cannot see.</p>
+  <div class="cta">
+    
+    <a class="btn primary" href="https://github.com/JesseRWeigel/honest-newsletter-stats">Source on GitHub</a>
+  </div>
+</header>
+<p>Newsletter analytics with no tracking pixels, no per-subscriber link wrappers, aggregate click counts behind a k-anonymity threshold, and a public dashboard that tells readers what the publisher cannot see.</p>
+<p>Catalog task: <code>MEDIA-015</code>. Part of <a href="../../README.md">thousand</a>.</p>
+<p><strong>Read <a href="THREAT_MODEL.md">THREAT_MODEL.md</a> first.</strong> It is the primary deliverable. The code implements the position taken there, and where the code falls short, that document says so in detail. The short version of the honest part: the redirect endpoint still receives every clicker&#x27;s IP address and user agent in the HTTP request. This application never reads them and never stores them, but they exist in flight, and a reverse proxy in front of this server will log them by default. This system is unlinked at rest. It is not anonymous.</p>
+<h2>What this is</h2>
+<p>Four pieces, about 900 lines of Node with zero runtime dependencies.</p>
+<p><strong>No open tracking.</strong> <code>src/email.js</code> renders the issue body with registered links rewritten to shared redirect URLs and appends the opt-in feedback footer. It takes no recipient argument, so the rendered bytes are identical for everyone on the list. <code>auditRenderedEmail</code> rejects any <code>&lt;img&gt;</code>, remote CSS <code>url()</code>, remote <code>background</code> attribute, or active content tag, so a template edit cannot quietly reintroduce a pixel.</p>
+<p><strong>Aggregate-only click counting.</strong> <code>src/store.js</code> defines a SQLite schema whose click table is <code>(issue_id, link_id, day, count)</code>. There is no column that could hold a subscriber, an IP, a user agent, or a clock time. <code>recordClick</code> takes three parameters and there is nowhere for a fourth to go. Two storage modes:</p>
+<ul><li><code>report</code> (default) persists exact counts and applies the threshold when publishing.</li><li><code>hold</code> keeps sub-threshold per-link counts in process memory and writes only a</li></ul>
+<p>  link-agnostic per-day total, so a stolen database file cannot say which link the   suppressed clicks were on. It costs durability and requires a single long-lived process.   See the threat model before choosing it.</p>
+<p><strong>A k-anonymity reporting policy.</strong> <code>src/policy.js</code> is the only place a raw count becomes a published number. Default k is 5. A cell below k serializes identically for every value from 0 to k-1, so a suppressed cell says nothing about which small number it was. Optional <code>quantize</code> rounds published counts down to a multiple of n, which blunts the attack where someone polls the public dashboard and watches a counter tick once per click.</p>
+<p><strong>A dashboard that inverts.</strong> <code>src/dashboard.js</code> prints the numbers next to an explicit list of the questions the system cannot answer and why each one is unanswerable. It renders the <code>CREATE TABLE</code> statements live from the running database, so a reader can check the no-identity claim against the process instead of against a promise in a README. It also states the residual IP leak and the fact that click counts include mail scanners.</p>
+<p>The feedback footer is a two-step action. A GET on a feedback link renders a confirmation page and records nothing; only the confirming POST increments a counter. Corporate mail scanners follow links, they do not submit forms, so feedback counts are much cleaner than click counts.</p>
+<h2>Running it</h2>
+<p>Needs Node 22.5 or newer for the built-in <code>node:sqlite</code>. No npm install, there are no dependencies.</p>
+<pre><code># see the rendered email, the pixel audit, and a published report
+node src/cli.js demo
+
+# serve the dashboard and redirect endpoint with seeded demo data
+node src/cli.js serve --db /tmp/stats.db --port 8787 --seed 1
+# then open http://localhost:8787/
+
+# stronger at-rest mode, higher threshold
+node src/cli.js serve --db /tmp/stats.db --mode hold --k 10</code></pre>
+<p>Endpoints: <code>GET /</code> index, <code>GET /i/:issue</code> issue dashboard, <code>GET /c/:issue/:link</code> redirect, <code>GET|POST /f/:issue/:bucket</code> feedback, <code>GET /api/stats[/:issue]</code>, <code>GET /api/schema</code>.</p>
+<p>Programmatic use:</p>
+<pre><code>import { Store } from &#x27;./src/store.js&#x27;;
+const store = new Store(&#x27;stats.db&#x27;, { mode: &#x27;hold&#x27;, policy: { k: 5, quantize: 10 } });
+store.createIssue({ issueId: &#x27;issue-12&#x27;, title: &#x27;Issue 12&#x27;, recipientCount: 412 });
+store.registerLink({ issueId: &#x27;issue-12&#x27;, linkId: &#x27;a&#x27;, targetUrl: &#x27;https://example.org/a&#x27;, label: &#x27;A&#x27; });</code></pre>
+<h2>Verify</h2>
+<pre><code>bash verify.sh</code></pre>
+<p>Three stages. Stage 1 runs 45 tests, including an end-to-end run of the real HTTP server where twelve simulated subscribers each carry a canary in <code>User-Agent</code>, <code>Cookie</code>, <code>X-Forwarded-For</code>, <code>X-Subscriber-Id</code>, <code>From</code>, and <code>Referer</code>, after which every byte the process persisted and every byte it will serve is scanned for any canary. That suite includes a negative control which deliberately plants a subscriber id in the database and asserts the scanner catches it, so a pass means the scan can actually fail. Stage 2 repeats the leak check from outside the test harness against a separately launched server, greping the database file with <code>grep</code>. Stage 3 greps the shipped source for tracking primitives.</p>
+<p>Assumptions recorded during the build, since the task description left them open:</p>
+<ul><li>Counting is per link and per UTC day. Finer time buckets were rejected because they make</li></ul>
+<p>  timing correlation on a small list much easier.</p>
+<ul><li>The threshold is applied to per-link cumulative totals and to a per-issue daily series,</li></ul>
+<p>  and a per-link-per-day table is never published, because subtracting consecutive   cumulative totals would reveal daily increments that never passed the threshold.</p>
+<ul><li>Free-text feedback is deliberately not implemented. A sentence cannot be k-anonymized.</li><li>Bot filtering by user agent is deliberately not implemented, because it requires reading</li></ul>
+<p>  the user agent. Click counts are therefore an upper bound and the dashboard says so.</p>
+<h2>Status</h2>
+<p><code>bash verify.sh</code> exits 0. Pasted below, with 38 of the 45 individual test lines elided for length and everything else verbatim. <code>tools/logrun.py</code> re-executed the same command from outside this project and recorded the real exit code in <code>logs/runs.jsonl</code>.</p>
+<pre><code>== stage 1: test suite ==
+✔ the issue page states what the publisher cannot see, not only what it can (2.169461ms)
+✔ the index renders the live schema so the no-identity claim is auditable (0.618511ms)
+✔ a suppressed link renders as a threshold, never as zero (0.50302ms)
+✔ the page tells the reader that clicks include machines (0.434124ms)
+✔ hold mode and report mode describe their own storage honestly (0.792561ms)
+✔ rendered HTML escapes issue and link text (0.313398ms)
+✔ the rendered email is byte-identical for every recipient (2.516259ms)
+[38 test lines elided]
+✔ hold mode released state survives reopening the same database file (53.042076ms)
+✔ feedback buckets are a closed vocabulary (0.456005ms)
+✔ utcDay keeps date granularity only (0.314008ms)
+ℹ tests 45
+ℹ suites 0
+ℹ pass 45
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 210.348504
+
+== stage 2: live server, external leak check ==
+ok: no canary in stats.db
+ok: no canary in stats.db-shm
+ok: no canary in stats.db-wal
+ok: no canary in the dashboard or the JSON API
+ok: dashboard publishes what the publisher cannot see
+ok: 7 clicks aggregated and published above k=5
+ok: sub-threshold cells are suppressed in both the API and the page
+
+== stage 3: structural grep for tracking primitives in shipped source ==
+ok: no tracking primitive in src/
+
+VERIFY PASSED</code></pre>
+<h2>Unfinished</h2>
+<ul><li><strong>No mail sending.</strong> This produces the email HTML and counts the clicks. Handing the HTML</li></ul>
+<p>  to an ESP is out of scope, and the ESP will see far more than this system does.</p>
+<ul><li><strong>No retention or deletion schedule.</strong> Per-day rows accumulate forever. Collapsing old</li></ul>
+<p>  rows into per-issue totals after some weeks is listed in the threat model as an   improvement and is not implemented.</p>
+<ul><li><strong>No authentication on the dashboard.</strong> It is public by design, which means the polling</li></ul>
+<p>  attack described in the threat model applies unless <code>quantize</code> is raised above 1.</p>
+<ul><li><strong>Hold mode is single-process only.</strong> On a scaled or serverless deployment the in-memory</li></ul>
+<p>  buffer is per-instance and the mode degrades. There is no distributed implementation.</p>
+<ul><li><strong>The Oblivious HTTP relay is not built.</strong> It is the change that would close the largest</li></ul>
+<p>  residual leak, and it needs a second party with a separate operator.</p>
+<ul><li><strong>No load testing.</strong> Every write is a synchronous SQLite statement on the request path.</li></ul>
+<p>  Fine for a newsletter, untested above a trickle.</p>
+<footer>
+  <p>Part of <a href="https://github.com/JesseRWeigel/722-things-to-build">722 things to
+  build</a>, a catalog of scoped projects. Built and verified by an agent fleet; every
+  project ships with a verify command whose real exit code decides whether it counts
+  as done.</p>
+</footer>
+</div>
