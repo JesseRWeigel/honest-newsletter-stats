@@ -1,0 +1,21 @@
+{
+  "name": "honest-newsletter-stats",
+  "version": "1.0.0",
+  "description": "Privacy-preserving newsletter analytics: no tracking pixels, aggregate-only click counts with a k-anonymity threshold, and a published threat model",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "bin": {
+    "honest-newsletter-stats": "src/cli.js"
+  },
+  "scripts": {
+    "test": "node --disable-warning=ExperimentalWarning --test test/*.test.js",
+    "demo": "node --disable-warning=ExperimentalWarning src/cli.js demo",
+    "serve": "node --disable-warning=ExperimentalWarning src/cli.js serve",
+    "verify": "bash verify.sh"
+  },
+  "keywords": ["newsletter", "analytics", "privacy", "k-anonymity", "threat-model"],
+  "dependencies": {}
+}
