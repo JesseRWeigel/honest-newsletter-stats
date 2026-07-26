@@ -34,8 +34,10 @@ export const CAN_SEE = Object.freeze([
    'Sub-threshold links are shown as "fewer than k", never as zero.'],
   ['How many clicks the whole issue received on each UTC day.',
    'Summed across every link, which is why day granularity is acceptable here.'],
-  ['How many readers pressed each button in the opt-in feedback footer.',
-   'Feedback is a deliberate two-step action, so it is not triggered by mail scanners.'],
+  ['How many times each button in the opt-in feedback footer was pressed.',
+   'Presses, not readers: nothing identifies or deduplicates a submitter, so one person '
+   + 'pressing five times counts as five. Feedback is a deliberate two-step action, so it '
+   + 'is not triggered by mail scanners.'],
   ['How many recipients the issue was sent to.',
    'The publisher already knows this from the mail provider; it is here as a denominator.'],
 ]);

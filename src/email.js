@@ -76,17 +76,65 @@ export function renderIssue({ bodyHtml, issueId, links, baseUrl, footer = true }
  */
 export function auditRenderedEmail(html) {
   const problems = [];
+  const add = (m) => { if (!problems.includes(m)) problems.push(m); };
+
+  // Anything that causes the mail client to fetch a remote resource when the message is
+  // opened IS open tracking, whatever tag it hides behind. An independent review found four
+  // vectors this audit passed as clean: a remote stylesheet, a CSS @import, an SVG <image>,
+  // and a protocol-relative url(). Each one is a working open pixel.
   if (/<img\b/i.test(html)) {
-    problems.push('contains an <img> tag; remote images are open tracking by another name');
+    add('contains an <img> tag; remote images are open tracking by another name');
   }
-  if (/<(script|iframe|object|embed)\b/i.test(html)) {
-    problems.push('contains an active content tag');
+  if (/<(script|iframe|object|embed|frame|applet)\b/i.test(html)) {
+    add('contains an active content tag');
   }
-  if (/url\(\s*['"]?https?:/i.test(html)) {
-    problems.push('contains a CSS remote url(), which fetches on open exactly like a pixel');
+  // A remote stylesheet fetches on open just as reliably as an image.
+  if (/<link\b[^>]*\bhref\s*=\s*["']?(?:https?:)?\/\//i.test(html)) {
+    add('contains a <link> to a remote stylesheet, which fetches on open exactly like a pixel');
   }
-  if (/background\s*=\s*["']https?:/i.test(html)) {
-    problems.push('contains a remote background attribute, which fetches on open');
+  if (/@import\s+(?:url\()?\s*["']?(?:https?:)?\/\//i.test(html)) {
+    add('contains a CSS @import of a remote sheet, which fetches on open');
+  }
+  // Protocol-relative and quoted-or-not url(). The original pattern required an explicit
+  // http scheme, so //tracker.example/x.png sailed through.
+  if (/url\(\s*["']?\s*(?:https?:)?\/\//i.test(html)) {
+    add('contains a CSS remote url(), which fetches on open exactly like a pixel');
+  }
+  // Named individually rather than merged into one message: knowing WHICH vector fired is
+  // what tells an author where to look in their template.
+  if (/\bbackground\s*=\s*["']?\s*(?:https?:)?\/\//i.test(html)) {
+    add('contains a remote background attribute, which fetches on open');
+  }
+  if (/<(?:body|table|td|tr)\b[^>]*\b(?:src|poster)\s*=\s*["']?\s*(?:https?:)?\/\//i.test(html)) {
+    add('contains a remote resource attribute on a layout element, which fetches on open');
+  }
+  // SVG carries its own image and use elements, which reference remote hrefs.
+  if (/<svg\b/i.test(html) && /<(?:image|use)\b[^>]*\b(?:xlink:)?href/i.test(html)) {
+    add('contains an SVG <image> or <use> with an href, which fetches on open');
+  }
+  if (/<(?:video|audio|source)\b/i.test(html)) {
+    add('contains a media element, which can fetch or preload on open');
   }
   return problems;
+}
+
+/**
+ * Render and audit in one call, refusing to emit HTML that would track opens.
+ *
+ * renderIssue alone did not audit anything, and the `render` CLI path did not call the audit
+ * either, so a body containing a tracking pixel rendered fine and exited 0. A guarantee that
+ * depends on the caller remembering to check is not a guarantee.
+ */
+export function renderIssueAudited(options) {
+  const html = renderIssue(options);
+  const problems = auditRenderedEmail(html);
+  if (problems.length && !options.allowTracking) {
+    const err = new Error(
+      'refusing to render: this body would track opens.\n  ' + problems.join('\n  ') +
+      '\nRemove the remote resources, or pass allowTracking to render it anyway and lose ' +
+      'the guarantee this project exists to make.');
+    err.problems = problems;
+    throw err;
+  }
+  return { html, problems };
 }

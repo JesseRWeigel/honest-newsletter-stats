@@ -182,8 +182,13 @@ previewers, which follow every link in an email automatically, cannot vote on yo
 <form method="POST" action="/f/${escapeHtml(issueId)}/${escapeHtml(bucket)}">
   <p>You are about to record: <strong>${escapeHtml(bucket)}</strong> on issue
   <strong>${escapeHtml(issueId)}</strong>.</p>
-  <p>What gets stored is one increment to a counter. No identifier of you is created,
-  transmitted, or saved.</p>
+  <p>What gets stored is one increment to a counter. No identifier of you is created or
+  saved.</p>
+  <p><small>To be exact about what "transmitted" would mean: sending this request reveals
+  your IP address, and usually your browser's user-agent string, to this server and to any
+  network between you and it, exactly as loading any web page does. This project does not
+  read, log, or store either one, and it cannot stop them being sent. Saying "nothing is
+  transmitted" would have been false, so it does not say that.</small></p>
   <p><button type="submit">Send it</button></p>
 </form>
 <p><a href="/i/${escapeHtml(issueId)}">See the published counts instead</a></p>

@@ -1,4 +1,7 @@
 import test from 'node:test';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import assert from 'node:assert/strict';
 import { Store, SCHEMA_COLUMNS, utcDay } from '../src/store.js';
 import { buildIssueReport } from '../src/report.js';
@@ -162,4 +165,40 @@ test('utcDay keeps date granularity only', () => {
   assert.equal(utcDay(Date.UTC(2026, 6, 1, 23, 59, 59)), '2026-07-01');
   assert.equal(utcDay(Date.UTC(2026, 6, 2, 0, 0, 1)), '2026-07-02');
   assert.match(utcDay(), /^\d{4}-\d{2}-\d{2}$/);
+});
+
+test('reopening under a higher k holds instead of releasing', async () => {
+  // The leak: `released` was seeded from every link with any historical click row, without
+  // comparing to the k in force now. A database written in report mode came back with every
+  // link released, so hold mode wrote each new sub-threshold click straight through.
+  const dir = mkdtempSync(join(tmpdir(), 'hns-k-'));
+  const dbPath = join(dir, 'stats.db');
+
+  let s = new Store(dbPath, { mode: 'report', k: 5 });
+  s.createIssue({ issueId: 'i1', title: 't', sentDay: '2026-07-26', recipientCount: 100 });
+  s.registerLink({ issueId: 'i1', linkId: 'l1', targetUrl: 'https://e.com', label: 'x' });
+  assert.equal(s.recordClick('i1', 'l1', '2026-07-26'), 'counted');
+  s.close();
+
+  s = new Store(dbPath, { mode: 'hold', k: 10 });
+  assert.equal(s.recordClick('i1', 'l1', '2026-07-26'), 'held',
+    'a link below the ACTIVE k must be held, whatever mode wrote the earlier rows');
+  assert.equal(s.heldTotal('i1'), 1, 'the pre-existing count must be carried into held');
+  s.close();
+});
+
+test('a link already above the active k stays released', async () => {
+  // The fix must not break the normal path: real crossings still write through.
+  const dir = mkdtempSync(join(tmpdir(), 'hns-k2-'));
+  const dbPath = join(dir, 'stats.db');
+  let s = new Store(dbPath, { mode: 'report', k: 2 });
+  s.createIssue({ issueId: 'i1', title: 't', sentDay: '2026-07-26', recipientCount: 100 });
+  s.registerLink({ issueId: 'i1', linkId: 'l1', targetUrl: 'https://e.com', label: 'x' });
+  for (let i = 0; i < 4; i += 1) s.recordClick('i1', 'l1', '2026-07-26');
+  s.close();
+
+  s = new Store(dbPath, { mode: 'hold', k: 3 });
+  assert.equal(s.recordClick('i1', 'l1', '2026-07-26'), 'released',
+    'four stored clicks is above k=3, so this link is genuinely released');
+  s.close();
 });

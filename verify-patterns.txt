@@ -1,0 +1,12 @@
+rawHeaders
+(headers)[[:space:]]*\.
+(headers)[[:space:]]*\[
+\[[[:space:]]*'(user-agent|x-forwarded-for|x-real-ip|cookie)'
+\[[[:space:]]*"(user-agent|x-forwarded-for|x-real-ip|cookie)"
+remoteAddress
+remoteFamily
+set-?[Cc]ookie[[:space:]]*[:=(]
+new Image\(
+1x1\.gif
+/pixel
+open\.gif

@@ -12,7 +12,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { mkdtemp, rm, readdir, readFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, readdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { Store, SCHEMA_COLUMNS } from '../src/store.js';
@@ -199,10 +199,74 @@ test('the server source never reads an identifying request property', async () =
   for (const forbidden of [
     'remoteAddress', 'remoteFamily', 'user-agent', 'userAgent', 'x-forwarded-for',
     'x-real-ip', 'headers.cookie', 'setHeader(\'set-cookie', 'console.log', 'process.stdout',
+    // Added after an independent review showed the list was short enough to walk around.
+    // rawHeaders hands over every header as a flat array without naming any of them, so none
+    // of the header-specific entries above would catch it.
+    'rawHeaders', 'req.headers)', 'JSON.stringify(req',
+    // A leak does not have to go to stdout. stderr, a file, or an outbound request all work.
+    'console.error', 'console.warn', 'process.stderr',
+    'appendFile', 'writeFile', 'createWriteStream', 'openSync',
+    'fetch(', 'http.request', 'https.request',
   ]) {
     assert.ok(!code.includes(forbidden), `src/server.js reaches for ${forbidden}`);
   }
 });
+
+test('the canary scan covers the working directory, not only the database directory', async (t) => {
+  // The hole an independent review demonstrated: the scan looked only inside the temporary
+  // database directory. A handler doing
+  //   appendFileSync('./access.log', JSON.stringify(req.rawHeaders))
+  // writes every canary header into the process working directory, the database and response
+  // scans both stay clean, and verification passes with the central privacy property broken.
+  //
+  // This test asserts the scanner itself is capable of finding a canary outside the db dir,
+  // by planting one and requiring a hit. Without it, the scan's silence proves nothing.
+  const dir = await mkdtemp(path.join(tmpdir(), 'hns-scope-'));
+  const dbDir = path.join(dir, 'db');
+  await mkdir(dbDir, { recursive: true });
+  const canary = 'CANARY-SUBSCRIBER-8d3f1a';
+  // Planted OUTSIDE the database directory, exactly where the old scan could not see.
+  const planted = path.join(dir, 'access.log');
+  await writeFile(planted, `["x-subscriber-id","${canary}"]`, 'utf8');
+  t.after(async () => { await rm(dir, { recursive: true, force: true }); });
+
+  const hits = await scanForCanary(dir, canary);
+  assert.ok(hits.length > 0,
+    'the scanner must find a canary anywhere under the run root, not just in the db dir');
+  assert.ok(hits.some((h) => h.endsWith('access.log')),
+    `expected access.log among the hits, got ${JSON.stringify(hits)}`);
+
+  // And it must not fire on a directory that is genuinely clean.
+  const cleanDir = await mkdtemp(path.join(tmpdir(), 'hns-clean-'));
+  t.after(async () => { await rm(cleanDir, { recursive: true, force: true }); });
+  await writeFile(path.join(cleanDir, 'notes.txt'), 'nothing sensitive here', 'utf8');
+  assert.deepEqual(await scanForCanary(cleanDir, canary), [],
+    'a clean directory must produce no hits, or the scanner is useless');
+});
+
+/** Recursively search every file under `root` for `needle`. Returns the paths that match. */
+async function scanForCanary(root, needle) {
+  const hits = [];
+  const walk = async (dir) => {
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === 'node_modules' || entry.name === '.git') continue;
+        await walk(full);
+        continue;
+      }
+      let text;
+      try {
+        text = await readFile(full, 'latin1');   // latin1 never throws on binary
+      } catch {
+        continue;
+      }
+      if (text.includes(needle)) hits.push(full);
+    }
+  };
+  await walk(root);
+  return hits;
+}
 
 test('hold mode leaves nothing about a sub-threshold link on disk', async (t) => {
   const dir = await mkdtemp(path.join(tmpdir(), 'hns-hold-'));

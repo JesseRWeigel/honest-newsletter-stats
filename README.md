@@ -108,6 +108,51 @@ Assumptions recorded during the build, since the task description left them open
 - Bot filtering by user agent is deliberately not implemented, because it requires reading
   the user agent. Click counts are therefore an upper bound and the dashboard says so.
 
+## Defects found by independent review and fixed
+
+A reviewer that did not build this found five, four of them high severity. On a project whose
+entire claim is a privacy property, a false claim is the worst defect available, so all of them
+mattered.
+
+**k-anonymity leaked after a mode or threshold change.** The set of "already released" links was
+seeded from every link with any historical click row, without comparing to the `k` in force now.
+A database written in report mode came back with every link released, so hold mode wrote each new
+sub-threshold click straight through. Recording one click, reopening with `{mode:'hold', k:10}`,
+and clicking again produced a stored count of 2 against a threshold of 10. A link is now released
+only if what is already on disk meets the active `k`, and anything below it is carried back into
+the held accounting.
+
+**The no-open-tracking audit missed four working vectors.** A remote stylesheet, a CSS `@import`,
+an SVG `<image>`, and a protocol-relative `url(//host/x.png)` all fetch on open exactly like a
+pixel, and all four passed as clean. Worse, `renderIssue` never called the audit at all and
+neither did the `render` CLI path, so a body containing a literal tracking pixel rendered fine
+and exited 0. All four vectors are now detected by name, media elements too, and
+`renderIssueAudited` refuses to emit HTML that would track opens.
+
+**Verification passed with the central privacy property broken.** The canary scan looked only
+inside the temporary database directory, and the source guard listed named headers but not
+`rawHeaders`, `console.error`, or filesystem writes. A handler doing
+`appendFileSync('./access.log', JSON.stringify(req.rawHeaders))` would write every canary header
+into the working directory while both scans stayed clean. The guard list is widened, and a new
+test plants a canary outside the database directory and requires the scanner to find it, so the
+scan's silence now means something.
+
+**Two user-facing claims were false.** The feedback page said no identifier of you is
+"transmitted", when the POST necessarily reveals your IP and usually your user-agent to the
+server and every hop between. It now says exactly that, and says the project does not read or
+store either and cannot stop them being sent. And the report described how many "readers"
+pressed each button, when nothing identifies or deduplicates a submitter: one person pressing
+five times counted as five. It now says presses.
+
+### A note on the guard that had to be fixed twice
+
+Tightening the source grep to match access shapes rather than bare words introduced a malformed
+pattern. `grep` exited 2, wrote to stderr, produced no stdout, and the check reported "ok: no
+tracking primitive found". A broken guard silently passing is the same failure this project's
+review was full of, reproduced inside the fix for it. `verify.sh` now checks grep's exit status
+explicitly and fails when the guard cannot run, and three negative controls confirm the guard
+catches a header read, a `rawHeaders` dump, and a `remoteAddress` read.
+
 ## Status
 
 `bash verify.sh` exits 0. Pasted below, with 38 of the 45 individual test lines elided for

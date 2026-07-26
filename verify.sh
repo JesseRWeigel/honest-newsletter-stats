@@ -96,8 +96,25 @@ fi
 
 echo
 echo "== stage 3: structural grep for tracking primitives in shipped source =="
-hits="$(grep -rniE 'remoteAddress|user-agent|x-forwarded-for|set-cookie|new Image\(|1x1\.gif|/pixel|open\.gif' src/ \
-        | grep -vE '^[^:]+:[0-9]+: *//' || true)"
+# Match ACCESS shapes, not bare words. An earlier pattern matched the phrase anywhere,
+# including the sentence on the feedback page that tells a subscriber their IP and user-agent
+# are unavoidably visible to the server. That disclosure is the honest thing to print, and a
+# guard that forces its deletion trades real documentation for the appearance of safety.
+#
+# grep's exit status is checked explicitly. A malformed pattern exits 2, writes to stderr, and
+# produces no stdout, which the previous version reported as "no tracking primitive found".
+# A guard that cannot run is not a guard that passed.
+PATTERNS='verify-patterns.txt'
+set +e
+hits="$(grep -rn -i -E -f "$PATTERNS" src/ 2>/tmp/hns-grep-err | grep -vE '^[^:]+:[0-9]+: *//')"
+rc=${PIPESTATUS[0]}
+set -e
+if [ "$rc" -gt 1 ]; then
+  echo "FAIL: the tracking-primitive grep could not run (exit $rc):"
+  cat /tmp/hns-grep-err
+  fail=1
+  hits=""
+fi
 if [ -n "$hits" ]; then
   echo "FAIL: a tracking primitive appears in src/ outside a comment:"
   echo "$hits"

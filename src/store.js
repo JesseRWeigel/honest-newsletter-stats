@@ -110,13 +110,43 @@ export class Store {
     this.db = new DatabaseSync(path);
     this.db.exec('PRAGMA journal_mode = WAL;');
     this.db.exec(SCHEMA_SQL);
-    // (issue|link) -> Map<day, count> for links still below k in hold mode.
-    this.held = new Map();
+    // (issue|link) -> Map<day, count> for links still below k in hold mode. Populated below
+    // from whatever is already on disk, so reopening a database cannot lose the accounting.
     // (issue|link) pairs that already crossed k and are being written through.
-    this.released = new Set(
-      this.db.prepare('SELECT DISTINCT issue_id, link_id FROM link_clicks').all()
-        .map((r) => `${r.issue_id}|${r.link_id}`),
-    );
+    //
+    // This used to be seeded from every link with ANY historical click row, without comparing
+    // to the k in force now. So a database written in report mode, or under a smaller k, came
+    // back with every link marked released, and hold mode wrote each new sub-threshold click
+    // straight through. Recording one click, reopening with {mode:'hold', k:10}, and clicking
+    // again produced a stored count of 2 against a threshold of 10.
+    //
+    // A link is released only if what is already stored meets the ACTIVE threshold. Anything
+    // below it goes back into `held`, seeded with the counts already on disk so the
+    // accounting stays correct and no further writes accumulate below k.
+    this.released = new Set();
+    this.held = new Map();
+    const existing = this.db.prepare(
+      'SELECT issue_id, link_id, day, count FROM link_clicks',
+    ).all();
+    const totals = new Map();
+    for (const row of existing) {
+      const key = `${row.issue_id}|${row.link_id}`;
+      totals.set(key, (totals.get(key) ?? 0) + row.count);
+    }
+    for (const [key, total] of totals) {
+      if (total >= this.policy.k) {
+        this.released.add(key);
+      }
+    }
+    if (this.mode === 'hold') {
+      for (const row of existing) {
+        const key = `${row.issue_id}|${row.link_id}`;
+        if (this.released.has(key)) continue;
+        const days = this.held.get(key) ?? new Map();
+        days.set(row.day, (days.get(row.day) ?? 0) + row.count);
+        this.held.set(key, days);
+      }
+    }
   }
 
   close() {
