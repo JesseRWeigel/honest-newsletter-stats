@@ -4,7 +4,7 @@ Newsletter analytics with no tracking pixels, no per-subscriber link wrappers, a
 click counts behind a k-anonymity threshold, and a public dashboard that tells readers
 what the publisher cannot see.
 
-Catalog task: `MEDIA-015`. Part of [thousand](https://github.com/JesseRWeigel/722-things-to-build).
+Catalog task: `MEDIA-015`. Part of [722 things to build](https://github.com/JesseRWeigel/722-things-to-build).
 
 **[Read this on the web](https://jesserweigel.github.io/honest-newsletter-stats/)**
 
